@@ -149,7 +149,7 @@ export const PayslipViewerModal: React.FC<PayslipViewerModalProps> = ({
         <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-slate-50 print:p-0 print:bg-white">
           <div
             id="printable-payslip"
-            className="max-w-3xl mx-auto bg-white border border-slate-200 rounded-xl shadow-sm p-6 sm:p-8 relative overflow-hidden print:border-none print:shadow-none print:p-4"
+            className="payslip-container print-watermark max-w-3xl mx-auto bg-white border border-slate-200 rounded-xl shadow-sm p-6 sm:p-8 relative overflow-hidden print:border-none print:shadow-none print:p-4 print:w-full"
           >
             {/* Watermark in background */}
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.03] select-none rotate-[-25deg]">

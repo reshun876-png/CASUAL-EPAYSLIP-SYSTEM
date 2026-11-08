@@ -1,0 +1,162 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net: Default-deny all unexpected paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Hardened Helper Primitives
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Role verification against users collection or bootstrap admin
+    function isSuperAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'reshun876@gmail.com' ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super_admin')
+      );
+    }
+
+    function isHrOrAdmin() {
+      return isSignedIn() && (
+        isSuperAdmin() ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'hr_payroll')
+      );
+    }
+
+    function isAuditorOrAdmin() {
+      return isSignedIn() && (
+        isSuperAdmin() ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'auditor')
+      );
+    }
+
+    // Validation Blueprint: System Users
+    function isValidUser(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.username is string && data.username.size() <= 64 &&
+             data.fullName is string && data.fullName.size() <= 128 &&
+             data.email is string && data.email.size() <= 128 &&
+             data.role in ['super_admin', 'hr_payroll', 'supervisor', 'auditor', 'staff'] &&
+             data.title is string && data.title.size() <= 128;
+    }
+
+    // Validation Blueprint: Temporal Staff
+    function isValidStaff(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.staffId is string && data.staffId.size() <= 64 &&
+             data.fullName is string && data.fullName.size() <= 128 &&
+             data.cadre is string && data.cadre.size() <= 128 &&
+             data.department is string && data.department.size() <= 128 &&
+             data.ghanaCardNo is string && data.ghanaCardNo.size() <= 32 &&
+             data.standardMonthlyRate is number && data.standardMonthlyRate >= 0 &&
+             data.status in ['Active', 'Inactive', 'On Leave', 'Suspended', 'Contract Ended'];
+    }
+
+    // Validation Blueprint: Job Cadre / Category
+    function isValidJobCategory(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.name is string && data.name.size() <= 128 &&
+             data.department is string && data.department.size() <= 128 &&
+             data.defaultMonthlyRate is number && data.defaultMonthlyRate >= 0 &&
+             data.defaultDailyRate is number && data.defaultDailyRate >= 0;
+    }
+
+    // Validation Blueprint: Payroll Cycle
+    function isValidPayrollCycle(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.monthYear is string && data.monthYear.size() <= 64 &&
+             data.status in ['Draft', 'Submitted for Audit', 'Audit Approved', 'Final Approved', 'Disbursed'];
+    }
+
+    // Validation Blueprint: Payslip
+    function isValidPayslip(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.payslipSerialNo is string && data.payslipSerialNo.size() <= 64 &&
+             data.payrollCycleId is string && data.payrollCycleId.size() <= 128 &&
+             data.staffId is string && data.staffId.size() <= 64 &&
+             data.grossPay is number && data.grossPay >= 0 &&
+             data.netPay is number && data.netPay >= 0 &&
+             data.securityHash is string && data.securityHash.size() <= 128;
+    }
+
+    // Validation Blueprint: Audit Log Entry
+    function isValidAuditLog(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.timestamp is string && data.timestamp.size() <= 64 &&
+             data.userName is string && data.userName.size() <= 128 &&
+             data.userRole is string && data.userRole.size() <= 64 &&
+             data.action is string && data.action.size() <= 128 &&
+             data.details is string && data.details.size() <= 512;
+    }
+
+    // Collection 1: Users (Admin RBAC Profiles)
+    match /users/{userId} {
+      allow get: if isSignedIn() && (request.auth.uid == userId || isHrOrAdmin() || isAuditorOrAdmin());
+      allow list: if isSignedIn() && (isHrOrAdmin() || isAuditorOrAdmin());
+      allow create, update: if isSignedIn() && (isSuperAdmin() || request.auth.uid == userId) && isValidUser(incoming());
+      allow delete: if isSuperAdmin();
+    }
+
+    // Collection 2: Temporal Staff Roster
+    match /staff/{staffId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create, update: if isHrOrAdmin() && isValidStaff(incoming());
+      allow delete: if isSuperAdmin();
+    }
+
+    // Collection 3: Job Cadres & Rate Categories
+    match /jobCategories/{categoryId} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isHrOrAdmin() && isValidJobCategory(incoming());
+      allow delete: if isSuperAdmin();
+    }
+
+    // Collection 4: Payroll Cycles & Approval Workflow
+    match /payrollCycles/{cycleId} {
+      allow get, list: if isSignedIn();
+      allow create, update: if (isHrOrAdmin() || isAuditorOrAdmin()) && isValidPayrollCycle(incoming());
+      allow delete: if isSuperAdmin();
+    }
+
+    // Collection 5: Monthly Payslips
+    match /payslips/{payslipId} {
+      allow get: if isSignedIn() && (isHrOrAdmin() || isAuditorOrAdmin() || resource.data.staffId == request.auth.uid);
+      allow list: if isSignedIn() && (isHrOrAdmin() || isAuditorOrAdmin() || resource.data.staffId == request.auth.uid);
+      allow create, update: if isHrOrAdmin() && isValidPayslip(incoming());
+      allow delete: if isSuperAdmin();
+    }
+
+    // Collection 6: Audit Trail (Append-Only Immutable Ledger)
+    match /auditLogs/{logId} {
+      allow get, list: if isSuperAdmin() || isAuditorOrAdmin();
+      allow create: if isSignedIn() && isValidAuditLog(incoming());
+      // Updates and Deletions are mathematically blocked to guarantee audit immutability
+      allow update, delete: if false;
+    }
+
+    // Connection Healthcheck Document
+    match /test/{docId} {
+      allow read, write: if true;
+    }
+  }
+}

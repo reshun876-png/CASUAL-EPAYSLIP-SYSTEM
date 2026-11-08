@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   UserAccount,
   TemporalStaff,
@@ -45,6 +45,23 @@ import {
   loadJobCategoriesSecurely,
 } from './utils/secureStorage';
 
+import {
+  syncStaffWithFirestore,
+  loadStaffFromFirestore,
+  deleteStaffFromFirestore,
+  syncJobCategoriesWithFirestore,
+  loadJobCategoriesFromFirestore,
+  syncUsersWithFirestore,
+  loadUsersFromFirestore,
+  syncPayrollCyclesWithFirestore,
+  loadPayrollCyclesFromFirestore,
+  syncPayslipsWithFirestore,
+  loadPayslipsFromFirestore,
+  addAuditLogToFirestore,
+  loadAuditLogsFromFirestore,
+  testConnection,
+} from './firebase/config';
+
 export default function App() {
   // Authentication & RBAC state
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(INITIAL_USERS[0]); // Default to Super Admin for immediate rich view
@@ -65,8 +82,76 @@ export default function App() {
   const [prefilledVerifierSerial, setPrefilledVerifierSerial] = useState<string>('');
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [isFirestoreConnected, setIsFirestoreConnected] = useState<boolean>(true);
 
-  // Audit Log helper
+  // Firestore Synchronizer on Boot
+  useEffect(() => {
+    let mounted = true;
+    async function initFirestore() {
+      try {
+        const isConnected = await testConnection();
+        if (mounted) setIsFirestoreConnected(isConnected);
+
+        const [cloudStaff, cloudCategories, cloudUsers, cloudCycles, cloudPayslips, cloudLogs] =
+          await Promise.all([
+            loadStaffFromFirestore(),
+            loadJobCategoriesFromFirestore(),
+            loadUsersFromFirestore(),
+            loadPayrollCyclesFromFirestore(),
+            loadPayslipsFromFirestore(),
+            loadAuditLogsFromFirestore(),
+          ]);
+
+        if (!mounted) return;
+
+        if (cloudStaff && cloudStaff.length > 0) {
+          setStaffList(cloudStaff);
+          saveStaffRosterSecurely(cloudStaff);
+        } else {
+          syncStaffWithFirestore(staffList);
+        }
+
+        if (cloudCategories && cloudCategories.length > 0) {
+          setCategories(cloudCategories);
+          saveJobCategoriesSecurely(cloudCategories);
+        } else {
+          syncJobCategoriesWithFirestore(categories);
+        }
+
+        if (cloudUsers && cloudUsers.length > 0) {
+          setUsers(cloudUsers);
+          saveUsersSecurely(cloudUsers);
+        } else {
+          syncUsersWithFirestore(users);
+        }
+
+        if (cloudCycles && cloudCycles.length > 0) {
+          setCycles(cloudCycles);
+        } else {
+          syncPayrollCyclesWithFirestore(cycles);
+        }
+
+        if (cloudPayslips && cloudPayslips.length > 0) {
+          setPayslips(cloudPayslips);
+        } else {
+          syncPayslipsWithFirestore(payslips);
+        }
+
+        if (cloudLogs && cloudLogs.length > 0) {
+          setAuditLogs(cloudLogs);
+        }
+      } catch (e) {
+        console.warn('Firebase initial synchronization info:', e);
+      }
+    }
+
+    initFirestore();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // Audit Log helper with Firestore & Vault Persistence
   const addAuditEntry = (action: string, details: string) => {
     if (!currentUser) return;
     const now = new Date();
@@ -80,13 +165,15 @@ export default function App() {
       details,
     };
     setAuditLogs((prev) => [newEntry, ...prev]);
+    addAuditLogToFirestore(newEntry);
   };
 
-  // Staff Management Handlers with Secure Vault Persistence
+  // Staff Management Handlers with Secure Vault Persistence & Cloud Firestore
   const handleAddStaff = (newStaff: TemporalStaff) => {
     const updated = [newStaff, ...staffList];
     setStaffList(updated);
     saveStaffRosterSecurely(updated);
+    syncStaffWithFirestore(updated);
     addAuditEntry(
       'STAFF_ENROLLED',
       `Enrolled new temporal staff member: ${newStaff.fullName} (${newStaff.staffId}) in ${newStaff.department}. Base: GH₵ ${newStaff.standardMonthlyRate.toFixed(2)}, Contract: ${newStaff.contractDurationMonths}m (${newStaff.contractType})`
@@ -97,10 +184,11 @@ export default function App() {
     const updatedList = staffList.map((s) => (s.id === updatedStaff.id ? updatedStaff : s));
     setStaffList(updatedList);
     saveStaffRosterSecurely(updatedList);
+    syncStaffWithFirestore(updatedList);
 
     // If staff details (salary/allowances/name/status) changed, update any draft cycles
-    setPayslips((prev) =>
-      prev.map((p) => {
+    setPayslips((prev) => {
+      const updatedPayslips = prev.map((p) => {
         if (p.staffId === updatedStaff.staffId && !p.isLocked) {
           const customAllowances: { description: string; amount: number }[] = [];
           if (updatedStaff.allowances?.riskAllowance) {
@@ -132,8 +220,10 @@ export default function App() {
           };
         }
         return p;
-      })
-    );
+      });
+      syncPayslipsWithFirestore(updatedPayslips);
+      return updatedPayslips;
+    });
 
     addAuditEntry(
       'STAFF_UPDATED',
@@ -146,6 +236,7 @@ export default function App() {
     const updatedList = staffList.filter((s) => s.id !== staffId);
     setStaffList(updatedList);
     saveStaffRosterSecurely(updatedList);
+    deleteStaffFromFirestore(staffId);
 
     if (staff) {
       addAuditEntry(
@@ -155,11 +246,12 @@ export default function App() {
     }
   };
 
-  // User Management Handlers (Admin RBAC)
+  // User Management Handlers (Admin RBAC & Cloud Firestore)
   const handleAddUser = (newUser: UserAccount) => {
     const updated = [...users, newUser];
     setUsers(updated);
     saveUsersSecurely(updated);
+    syncUsersWithFirestore(updated);
     addAuditEntry(
       'USER_CREATED',
       `Admin provisioned user account: ${newUser.fullName} (${newUser.username}) with role [${newUser.role.toUpperCase()}] for ${newUser.department}.`
@@ -170,6 +262,7 @@ export default function App() {
     const updated = users.map((u) => (u.id === updatedUser.id ? updatedUser : u));
     setUsers(updated);
     saveUsersSecurely(updated);
+    syncUsersWithFirestore(updated);
     if (currentUser?.id === updatedUser.id) {
       setCurrentUser(updatedUser);
     }
@@ -184,6 +277,7 @@ export default function App() {
     const updated = users.filter((u) => u.id !== userId);
     setUsers(updated);
     saveUsersSecurely(updated);
+    syncUsersWithFirestore(updated);
     if (target) {
       addAuditEntry(
         'USER_DELETED',
@@ -197,6 +291,7 @@ export default function App() {
     const updated = [...categories, newCategory];
     setCategories(updated);
     saveJobCategoriesSecurely(updated);
+    syncJobCategoriesWithFirestore(updated);
     addAuditEntry(
       'JOB_CATEGORY_CREATED',
       `Created new job cadre: ${newCategory.name} (${newCategory.department}) with standard base pay GH₵ ${newCategory.defaultMonthlyRate.toFixed(2)}.`
@@ -207,6 +302,7 @@ export default function App() {
     const updated = categories.map((c) => (c.id === updatedCategory.id ? updatedCategory : c));
     setCategories(updated);
     saveJobCategoriesSecurely(updated);
+    syncJobCategoriesWithFirestore(updated);
     addAuditEntry(
       'JOB_CATEGORY_UPDATED',
       `Updated salary benchmarks and risk subsidies for cadre: ${updatedCategory.name} (${updatedCategory.department}).`
@@ -218,6 +314,7 @@ export default function App() {
     const updated = categories.filter((c) => c.id !== categoryId);
     setCategories(updated);
     saveJobCategoriesSecurely(updated);
+    syncJobCategoriesWithFirestore(updated);
     if (cat) {
       addAuditEntry(
         'JOB_CATEGORY_DELETED',
@@ -234,8 +331,8 @@ export default function App() {
 
   // Payroll Lifecycle Handlers
   const handleUpdatePayrollStatus = (cycleId: string, newStatus: any, notes?: string) => {
-    setCycles((prev) =>
-      prev.map((c) =>
+    setCycles((prev) => {
+      const updated = prev.map((c) =>
         c.id === cycleId
           ? {
               ...c,
@@ -247,8 +344,10 @@ export default function App() {
               notes: notes || c.notes,
             }
           : c
-      )
-    );
+      );
+      syncPayrollCyclesWithFirestore(updated);
+      return updated;
+    });
 
     const cycle = cycles.find((c) => c.id === cycleId);
     addAuditEntry(
@@ -266,8 +365,8 @@ export default function App() {
     const cycle = cycles.find((c) => c.id === cycleId);
     if (!staff || !cycle) return;
 
-    setPayslips((prev) =>
-      prev.map((p) => {
+    setPayslips((prev) => {
+      const updated = prev.map((p) => {
         if (p.staffId === staffId && p.payrollCycleId === cycleId) {
           // Recompute
           const customAllowances: { description: string; amount: number }[] = [];
@@ -308,8 +407,10 @@ export default function App() {
           };
         }
         return p;
-      })
-    );
+      });
+      syncPayslipsWithFirestore(updated);
+      return updated;
+    });
 
     addAuditEntry(
       'SHIFTS_MODIFIED',
@@ -318,8 +419,10 @@ export default function App() {
   };
 
   const handleCreateCycle = (newCycle: PayrollCycle) => {
-    setCycles((prev) => [newCycle, ...prev]);
+    const updatedCycles = [newCycle, ...cycles];
+    setCycles(updatedCycles);
     setSelectedCycleId(newCycle.id);
+    syncPayrollCyclesWithFirestore(updatedCycles);
 
     // Generate initial draft payslips for all active temporal staff
     const newCyclePayslips = staffList.map((staff, idx) => {
@@ -332,7 +435,10 @@ export default function App() {
       return buildPayslipForStaff(staff, newCycle, defaultShifts, idx + 1);
     });
 
-    setPayslips((prev) => [...newCyclePayslips, ...prev]);
+    const updatedPayslips = [...newCyclePayslips, ...payslips];
+    setPayslips(updatedPayslips);
+    syncPayslipsWithFirestore(updatedPayslips);
+
     addAuditEntry(
       'CYCLE_CREATED',
       `Initialized new payroll cycle for ${newCycle.monthYear} with ${staffList.length} temporal staff.`
@@ -393,6 +499,7 @@ export default function App() {
           availableUsers={users}
           onOpenUserManagementModal={() => setIsUserModalOpen(true)}
           onOpenJobCategoriesModal={() => setIsCategoryModalOpen(true)}
+          isFirestoreConnected={isFirestoreConnected}
         />
 
         {/* View Switcher based on Active Tab & Role */}
@@ -526,10 +633,10 @@ export default function App() {
             <span>Essikado Hospital, Sekondi-Takoradi</span>
           </div>
           <div>
-            Western Regional Health Directorate • Temporal & Locum Staff Electronic Payroll System
+            Western Regional Health Directorate • Temporal Staff Electronic Payroll • Cloud Firestore
           </div>
           <div className="text-[11px] text-slate-400">
-            Compliant with Ghana Revenue Authority (GRA) Withholding Tax & Data Protection Act 2012
+            Compliant with Ghana Revenue Authority (GRA) Withholding Tax & Data Protection Act 2012 • Project: seraphic-autumn-8kpm1
           </div>
         </div>
       </footer>

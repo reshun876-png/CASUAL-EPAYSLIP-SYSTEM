@@ -26,6 +26,7 @@ interface NavbarProps {
   availableUsers: UserAccount[];
   onOpenUserManagementModal?: () => void;
   onOpenJobCategoriesModal?: () => void;
+  isFirestoreConnected?: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -37,6 +38,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   availableUsers,
   onOpenUserManagementModal,
   onOpenJobCategoriesModal,
+  isFirestoreConnected = true,
 }) => {
   const [showRoleMenu, setShowRoleMenu] = React.useState(false);
 
@@ -104,11 +106,20 @@ export const Navbar: React.FC<NavbarProps> = ({
                   Western Regional Health Directorate
                 </span>
               </div>
-              <h1 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight flex items-center gap-1.5">
+              <h1 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight flex items-center gap-1.5 flex-wrap">
                 <span>ESSIKADO HOSPITAL</span>
                 <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
                   Temporal Staff Payroll
                 </span>
+                {isFirestoreConnected && (
+                  <span
+                    className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300"
+                    title="Connected to Firebase Cloud Firestore (seraphic-autumn-8kpm1)"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse"></span>
+                    <span>Firebase Live</span>
+                  </span>
+                )}
               </h1>
             </div>
           </div>

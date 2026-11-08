@@ -1,1 +1,149 @@
 @import "tailwindcss";
+
+/* 
+ * Ghana Health Service - Essikado Hospital Temporal Staff Payslip Portal
+ * Print Media Queries & High-Resolution Paper Formatting
+ */
+@media print {
+  /* 1. Hide All Navigation, Controls, Buttons, and UI Badges */
+  header,
+  nav,
+  aside,
+  footer,
+  button,
+  input,
+  select,
+  .print\:hidden,
+  .no-print,
+  .modal-backdrop,
+  [data-no-print="true"] {
+    display: none !important;
+  }
+
+  /* 2. Reset Viewport & Body to Pure White Paper Canvas */
+  html,
+  body {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    min-height: 100% !important;
+    font-size: 10pt !important;
+    line-height: 1.35 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Default Standard Page Margins */
+  @page {
+    size: A4 portrait;
+    margin: 10mm 12mm 10mm 12mm;
+  }
+
+  /* Specific Landscape Ledger Rule for Payroll Summaries */
+  @page landscape {
+    size: A4 landscape;
+    margin: 8mm 10mm 8mm 10mm;
+  }
+
+  .print-landscape {
+    page: landscape;
+  }
+
+  /* 3. Modal Flattening for Clean Printing */
+  .fixed,
+  .fixed.inset-0 {
+    position: static !important;
+    inset: auto !important;
+    background: transparent !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+  }
+
+  /* 4. Document Container Sizing & Auto-Scaling */
+  .payslip-container,
+  .payroll-report-container,
+  .printable-area,
+  #printable-payslip,
+  #printable-report,
+  #printable-ledger {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 auto !important;
+    padding: 12px 14px !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+    position: relative !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* 5. Official Ghana Health Service & Essikado Hospital Watermark */
+  .payslip-container::before,
+  .payroll-report-container::before,
+  .printable-area::before,
+  #printable-payslip::before,
+  #printable-report::before,
+  #printable-ledger::before,
+  .print-watermark::before {
+    content: "" !important;
+    position: absolute !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) rotate(-25deg) !important;
+    width: 360px !important;
+    height: 360px !important;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 300' width='360' height='360'%3E%3Cdefs%3E%3Cfilter id='blur' x='-20%25' y='-20%25' width='140%25' height='140%25'%3E%3CfeGaussianBlur stdDeviation='0.5'/%3E%3C/filter%3E%3C/defs%3E%3Ccircle cx='150' cy='150' r='135' fill='none' stroke='%23006B3F' stroke-width='8' stroke-opacity='0.10'/%3E%3Ccircle cx='150' cy='150' r='115' fill='none' stroke='%23FCD116' stroke-width='4' stroke-opacity='0.14'/%3E%3Ccircle cx='150' cy='150' r='98' fill='none' stroke='%23006B3F' stroke-width='2' stroke-opacity='0.08' stroke-dasharray='4 3'/%3E%3Cpath d='M150 55 L150 245 M55 150 L245 150' stroke='%23CE1126' stroke-width='24' stroke-linecap='square' stroke-opacity='0.09'/%3E%3Cpolygon points='150,85 165,130 212,130 174,157 188,202 150,175 112,202 126,157 88,130 135,130' fill='%23000000' fill-opacity='0.09'/%3E%3Cpath id='textCircleTop' d='M 35 150 A 115 115 0 0 1 265 150' fill='none'/%3E%3Cpath id='textCircleBottom' d='M 265 150 A 115 115 0 0 1 35 150' fill='none'/%3E%3Ctext font-family='Arial, sans-serif' font-size='15' font-weight='900' fill='%23006B3F' fill-opacity='0.16' letter-spacing='3'%3E%3CtextPath href='%23textCircleTop' startOffset='50%25' text-anchor='middle'%3EGHANA HEALTH SERVICE%3C/textPath%3E%3C/text%3E%3Ctext font-family='Arial, sans-serif' font-size='13' font-weight='900' fill='%23006B3F' fill-opacity='0.16' letter-spacing='2'%3E%3CtextPath href='%23textCircleBottom' startOffset='50%25' text-anchor='middle'%3EESSIKADO HOSPITAL - SEKONDI%3C/textPath%3E%3C/text%3E%3C/svg%3E") !important;
+    background-repeat: no-repeat !important;
+    background-position: center !important;
+    background-size: contain !important;
+    opacity: 0.18 !important;
+    pointer-events: none !important;
+    z-index: 0 !important;
+  }
+
+  /* 6. Elevate Content Over Watermark for Maximum Legibility */
+  .payslip-container > *,
+  .payroll-report-container > *,
+  .printable-area > *,
+  #printable-payslip > *,
+  #printable-report > *,
+  #printable-ledger > *,
+  .print-watermark > * {
+    position: relative !important;
+    z-index: 1 !important;
+  }
+
+  /* 7. Strict Table Formatting and Integrity */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+
+  th {
+    background-color: #f1f5f9 !important;
+    color: #0f172a !important;
+    font-weight: 700 !important;
+  }
+
+  tr,
+  td,
+  th {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* 8. Authorization & Signature Block Anchoring */
+  .print-signature-block,
+  .print-avoid-break {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+}
